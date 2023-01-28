@@ -87,7 +87,7 @@ class Language {
   public languagesAlpha2: {
     [key: string]: LanguageType;
   } = {};
-  public extraSentences: string[] = [];
+  public extraSentences: string[][] = [];
 
   constructor() {
     this.languagesAlpha3 = {};
@@ -117,7 +117,7 @@ class Language {
   static asTuples(value: string) {
     const dictionary = Language.getTrigrams(value).reduce(
       (srcprev, current) => {
-        const prev = srcprev;
+        const prev: typeof srcprev = srcprev;
         prev[current] = (prev[current] || 0) + 1;
         return prev;
       },
@@ -131,7 +131,12 @@ class Language {
     return tuples;
   }
 
-  static getDistance(trigrams: [string, number][], model) {
+  static getDistance(
+    trigrams: [string, number][],
+    model: {
+      [key: string]: number;
+    }
+  ) {
     let distance = 0;
     trigrams.forEach((currentTrigram) => {
       distance +=
@@ -147,7 +152,7 @@ class Language {
     return (count ? count.length : 0) / value.length || 0;
   }
 
-  static isLatin(value) {
+  static isLatin(value: string) {
     let total = 0;
     const half = value.length / 2;
     for (let i = 0; i < value.length; i += 1) {
@@ -222,7 +227,7 @@ class Language {
     srcLanguages: typeof data[keyof typeof data],
     options: Options
   ) {
-    const distances = [];
+    const distances: [string, number][] = [];
     const allowList = options.allowList || [];
     const denyList = options.denyList || [];
     const languages = Language.filterLanguages(
@@ -238,11 +243,11 @@ class Language {
         language,
         Language.getDistance(
           trigrams,
-          languages[language as keyof typeof data]
+          languages[language as keyof typeof data[keyof typeof data]]
         ),
       ]);
     });
-    return distances.sort((a, b) => a[1] - b[1]);
+    return distances.sort((a, b) => a[1] - b[1]) as [string, number][];
   }
 
   static detectAll(srcValue: string, settings: Options = {}) {
@@ -254,7 +259,7 @@ class Language {
 
     const { topScript, topCount } = Language.getTopScript(value);
     if (!topScript) {
-      return [[topScript, 1]];
+      return [["", 1]];
     }
     if (!(topScript in data) && topCount > 0.5) {
       if (settings.allowList) {
@@ -280,9 +285,12 @@ class Language {
       if (distances[0][0] === "und") {
         return [[topScript, 1]];
       }
-      const min = distances[0][1];
+      const min = distances[0][1] as number;
       const max = value.length * 300 - min;
-      return distances.map((d) => [d[0], 1 - (d[1] - min) / max || 0]);
+      return distances.map((d) => [
+        d[0],
+        1 - ((d as [string, number])[1] - min) / max || 0,
+      ]);
     }
     return [[topScript, 1]];
   }
@@ -353,22 +361,37 @@ class Language {
     return this.guess(utterance, allowList, 1)[0];
   }
 
-  addTrigrams(locale, sentence) {
+  addTrigrams(locale: string, sentence: string) {
     const language = this.languagesAlpha2[locale];
     const iso3 = language ? language.alpha3 : locale;
-    const script = Language.getTopScript(sentence)[0];
+    const script = Language.getTopScript(sentence).topScript;
+    if (!script) return;
     const trigrams = Language.getTrigrams(sentence);
-    if (data[script]) {
-      if (!data[script][iso3]) {
-        data[script][iso3] = {};
+    if (script in data && !!data[script as keyof typeof data]) {
+      const dataAtScript = data[script as keyof typeof data];
+      if (
+        !(iso3 in dataAtScript) &&
+        !dataAtScript[iso3 as keyof typeof dataAtScript]
+      ) {
+        (
+          dataAtScript as {
+            [key: string]: {};
+          }
+        )[iso3] = {};
       }
       trigrams.forEach((trigram) => {
-        data[script][iso3][trigram] = 1;
+        (
+          data[script as keyof typeof data] as unknown as {
+            [key: string]: {
+              [key: string]: number;
+            };
+          }
+        )[iso3][trigram] = 1;
       });
     }
   }
 
-  addExtraSentence(locale, sentence) {
+  addExtraSentence(locale: string, sentence: string) {
     this.extraSentences.push([locale, sentence]);
     this.addTrigrams(locale, sentence);
   }
@@ -379,7 +402,7 @@ class Language {
     });
   }
 
-  static lansplit(s) {
+  static lansplit(s: string) {
     if (s.includes("|")) {
       return s.split("|");
     }
@@ -390,27 +413,37 @@ class Language {
     return result;
   }
 
-  static addModel(script, name, value) {
-    const languages = data[script];
+  static addModel(script: string, name: string, value: string) {
+    const languages = data[script as keyof typeof data];
     const model = Language.lansplit(value);
     let weight = model.length;
-    const trigrams = {};
+    const trigrams: {
+      [key: string]: number;
+    } = {};
     while (weight > 0) {
       weight -= 1;
       trigrams[model[weight]] = weight;
     }
-    languages[name] = trigrams;
+    (
+      languages as {
+        [key: string]: {};
+      }
+    )[name] = trigrams;
   }
 
-  addModel(script, name, value) {
+  addModel(script: string, name: string, value: string) {
     Language.addModel(script, name, value);
   }
 
   static buildModel() {
     Object.keys(data).forEach((script) => {
-      const languages = data[script];
+      const languages = data[script as keyof typeof data];
       Object.keys(languages).forEach((name) => {
-        Language.addModel(script, name, languages[name]);
+        Language.addModel(
+          script,
+          name,
+          languages[name as keyof typeof languages]
+        );
       });
     });
   }
